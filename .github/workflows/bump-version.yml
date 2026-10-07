@@ -22,18 +22,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-#      - name: Fail if branch is not main
-#        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
-#        run: |
-#          echo "This workflow should not be triggered with workflow_dispatch on a branch other than main"
-#          exit 1
+      - name: Fail if branch is not master
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/master'
+        run: |
+          echo "This workflow should not be triggered with workflow_dispatch on a branch other than main"
+          exit 1
 
       - name: Checkout main branch
         uses: actions/checkout@v7.0.1
-
-#      - name: Create new branch
-#        run: |
-#          git branch feat/version_bump
 
       - name: Bump "${{ inputs.version_type }}" version
         working-directory: scripts
