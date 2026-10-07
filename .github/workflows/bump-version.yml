@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Ensure branch is main
-        if: github.ref != 'refs/heads/master'
+        if: github.ref != 'refs/heads/main'
         run: |
           echo "::error::This workflow can only be run from the main branch."
           exit 1
