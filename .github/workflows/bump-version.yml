@@ -42,6 +42,7 @@ jobs:
 
       - name: Commit & push
         run: |
-          git add -A
+          git remote set-url --push origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git
+          git add .
           git commit -m "chore: bump versions"
           git push
