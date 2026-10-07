@@ -1,16 +1,17 @@
 name: Bump version
+run-name: Bump ${{ inputs.version_type }} version
 
 on:
   workflow_dispatch:
     inputs:
       version_type:
         type: choice
-        description: Gets the part of the version that should get bumped.
+        description: Part of the version to bump.
         options:
           - Major
           - Minor
-          - Revision
-        default: Revision
+          - Patch
+        default: Patch
         required: true
 
 permissions:
@@ -22,24 +23,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Fail if branch is not master
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/master'
+      - name: Ensure branch is main
+        if: github.ref != 'refs/heads/main'
         run: |
-          echo "This workflow should not be triggered with workflow_dispatch on a branch other than main"
+          echo "::error::This workflow can only be run from the main branch."
           exit 1
 
-      - name: Checkout main branch
+      - name: Checkout main
         uses: actions/checkout@v7.0.1
+        with:
+          ref: main
 
-      - name: Bump "${{ inputs.version_type }}" version
+      - name: Bumping "${{ inputs.version_type }}"
         working-directory: scripts
         shell: pwsh
         run: ./bump-version.ps1 -${{ inputs.version_type }}
 
-      - name: Commit & push
+      # Bot identity found in the original GitHub Actions.
+      # Source: https://github.com/actions/checkout/pull/1184
+      - name: Commit and push
         run: |
-          git config user.name version-bump
-          git config user.email version-bump@github.com
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "chore: bump versions"
+ 
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: bump ${{ inputs.version_type }} version"
           git push
