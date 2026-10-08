@@ -1,10 +1,10 @@
 name: Bump version
-run-name: Bump ${{ inputs.version_type }} version
+run-name: Bump "${{ inputs.version_part }}" version
 
 on:
   workflow_dispatch:
     inputs:
-      version_type:
+      version_part:
         type: choice
         description: Part of the version to bump.
         options:
@@ -15,12 +15,19 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: bump-version-main
+  queue: max
 
 jobs:
   bump_version:
     name: Initiate version bump
     runs-on: ubuntu-latest
+    environment:
+      name: version-bump
+      deployment: false
 
     steps:
       - name: Ensure branch is main
@@ -29,28 +36,122 @@ jobs:
           echo "::error::This workflow can only be run from the main branch."
           exit 1
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.VERSION_BUMP_CLIENT_ID }}
+          private-key: ${{ secrets.VERSION_BUMP_PRIVATE_KEY }}
+
       - name: Checkout main
         uses: actions/checkout@v7.0.1
         with:
           ref: main
+          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Bumping "${{ inputs.version_type }}"
+      - name: Create version bump branch
+        id: branch
+        run: |
+          branch="chore/version-bump-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Bumping "${{ inputs.version_part }}"
         working-directory: scripts
         shell: pwsh
-        run: ./bump-version.ps1 -${{ inputs.version_type }}
+        run: ./bump-version.ps1 -${{ inputs.version_part }}
 
       # Bot identity found in the original GitHub Actions.
       # Source: https://github.com/actions/checkout/pull/1184
-      - name: Commit and push
+      - name: Commit and push version bump
+        id: commit
+        env:
+          BRANCH: ${{ steps.branch.outputs.name }}
+          VERSION_PART: ${{ inputs.version_part }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
- 
+          git add -u -- src
+
           if git diff --cached --quiet; then
-            echo "No version changes to commit."
+            echo "::error::No version changes to commit."
+            exit 1
+          fi
+
+          part="${VERSION_PART,,}"
+          git commit -m "chore: bump ${part} version [skip ci]"
+          git push origin "$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        id: pull-request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          VERSION_PART: ${{ inputs.version_part }}
+        run: |
+          part="${VERSION_PART,,}"
+          number=$(gh api -X POST "repos/$GITHUB_REPOSITORY/pulls" \
+            -f title="chore: bump ${part} version" \
+            -f head="$BRANCH" \
+            -f base=main \
+            -f body="Automated ${part} version bump." \
+            --jq .number)
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pull-request.outputs.number }}
+          HEAD_SHA: ${{ steps.commit.outputs.sha }}
+          VERSION_PART: ${{ inputs.version_part }}
+        run: |
+          part="${VERSION_PART,,}"
+          result=$(gh api -X PUT \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge-async" \
+            -f sha="$HEAD_SHA" \
+            -f merge_method=squash \
+            -f merge_action=direct_merge \
+            -F bypass_rules=true \
+            -f commit_title="chore: bump ${part} version" \
+            -f commit_message="Automated version bump.")
+
+          status=$(jq -r '.status' <<< "$result")
+          if [[ "$status" == "merged" ]]; then
             exit 0
           fi
 
-          git commit -m "chore: bump ${{ inputs.version_type }} version"
-          git push
+          uuid=$(jq -r '.details.uuid // .uuid // empty' <<< "$result")
+          if [[ -z "$uuid" ]]; then
+            message=$(jq -r '.details.message // "Merge request did not return a UUID."' <<< "$result")
+            echo "::error::Merge $status: $message"
+            exit 1
+          fi
+
+          for attempt in {1..30}; do
+            result=$(gh api \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge-async/$uuid")
+            status=$(jq -r '.status' <<< "$result")
+
+            if [[ "$status" == "merged" ]]; then
+              exit 0
+            fi
+            if [[ "$status" != "pending" ]]; then
+              message=$(jq -r '.details.message // "Unknown merge failure."' <<< "$result")
+              echo "::error::Merge $status: $message"
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          echo "::error::Timed out waiting for the pull request to merge."
+          exit 1
+
+      - name: Delete version bump branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
