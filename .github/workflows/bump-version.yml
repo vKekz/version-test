@@ -57,12 +57,12 @@ jobs:
       # Source: https://github.com/actions/checkout/pull/1184
       - name: Commit and push version bump to main
         env:
-          name: "github-actions[bot]"
-          email: "41898282+github-actions[bot]@users.noreply.github.com"
-          version_part: ${{ inputs.version_part }}
+          NAME: "github-actions[bot]"
+          EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+          VERSION_PART: ${{ inputs.version_part }}
         run: |
-          git config user.name ${{ env.name }} 
-          git config user.email ${{ env.email }}
+          git config user.name ${{ env.NAME }} 
+          git config user.email ${{ env.EMAIL }}
           git add .
 
           if git diff --cached --quiet; then
