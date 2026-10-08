@@ -56,11 +56,13 @@ jobs:
       # Bot identity found in the original GitHub Actions.
       # Source: https://github.com/actions/checkout/pull/1184
       - name: Commit and push version bump to main
-        env:
-          VERSION_PART: ${{ inputs.version_part }}
+        with:
+          name: "github-actions[bot]"
+          email: "41898282+github-actions[bot]@users.noreply.github.com"
+          version_part: ${{ inputs.version_part }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name ${{ name }} 
+          git config user.email ${{ email }}
           git add .
 
           if git diff --cached --quiet; then
@@ -68,6 +70,6 @@ jobs:
             exit 1
           fi
 
-          part="${VERSION_PART,,}"
+          part="${INPUT_VERSION_PART,,}"
           git commit -m "chore: bump ${part} version"
           git push origin HEAD:main
