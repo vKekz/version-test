@@ -51,7 +51,12 @@ jobs:
       - name: Bumping "${{ inputs.version_part }}"
         working-directory: scripts
         shell: pwsh
-        run: ./bump-version.ps1 -${{ inputs.version_part }}
+        run: |
+          if ('${{ inputs.version_part }}' -ne 'Patch') {
+            ./bump-version.ps1 '-${{ inputs.version_part }}'
+          } else {
+            ./bump-version.ps1
+          }
 
       # Bot identity found in the original GitHub Actions.
       # Source: https://github.com/actions/checkout/pull/1184
