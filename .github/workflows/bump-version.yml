@@ -63,7 +63,7 @@ jobs:
         run: |
           git config user.name ${{ env.NAME }} 
           git config user.email ${{ env.EMAIL }}
-          git add .
+          git add -u -- src
 
           if git diff --cached --quiet; then
             echo "::error::No version changes to commit."
