@@ -63,8 +63,8 @@ jobs:
           EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
           VERSION_PART: ${{ inputs.version_part }}
         run: |
-          git config user.name ${{ env.NAME }} 
-          git config user.email ${{ env.EMAIL }}
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git add -u -- src
 
           part="${VERSION_PART,,}"
